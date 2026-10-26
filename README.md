@@ -14,14 +14,14 @@ VLC application itself.
 ## Install from GitHub
 
 ```bash
-python3 -m pip install git+https://github.com/YOUR_USERNAME/iheart-cli.git
+python3 -m pip install git+https://github.com/kbcortez25/iheart-cli.git
 iheart --version
 ```
 
 For an isolated command-line installation, use `pipx` instead:
 
 ```bash
-pipx install git+https://github.com/YOUR_USERNAME/iheart-cli.git
+pipx install git+https://github.com/kbcortez25/iheart-cli.git
 iheart
 ```
 
