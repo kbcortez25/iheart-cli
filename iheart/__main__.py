@@ -352,6 +352,12 @@ class iHeart_CLI(iHeart):
 				cur_st_len = len(self.station_list)
 				if new_search:
 					to_print = getter(cur_st_len)
+					if not to_print:
+						if cur_st_len == 0:
+							_print_error("Nothing found")
+							return None
+						print(app_msg_color("No more results."))
+						return None
 					self.station_list += to_print
 				else:
 					if cur_st_len==0:
@@ -510,8 +516,9 @@ class iHeart_CLI(iHeart):
 		try:
 			while True:
 				if new_station is not None:
+					if self.station is not None:
+						self.station.stop()
 					self.station = new_station
-					self.station.stop()
 					new_station = None
 					continue # This will restart the while loop to make sure everything is setup correctly
 
@@ -625,7 +632,8 @@ class iHeart_CLI(iHeart):
 							input_category, search_term = None, None
 							break
 		except:
-			self._debug: traceback.print_exc()
+			if self._debug:
+				traceback.print_exc()
 			raise
 		finally:
 			if self.station is not None:
@@ -652,6 +660,8 @@ def main():
 
 	parser.add_argument("--shuffle", help="start playlist in shuffle mode (only works when --playlist is specified)", action='store_true')
 	args = parser.parse_args()
+	if args.shuffle and args.playlist is None:
+		parser.error("--shuffle requires --playlist")
 
 	if args.debug:
 		os.environ['RADIO_DEBUG'] = "1"
