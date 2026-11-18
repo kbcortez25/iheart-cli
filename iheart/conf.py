@@ -1,22 +1,34 @@
 import os
 import configparser
+import ntpath
 
 
+def _get_directories(environ=None, platform=None):
+	environ = os.environ if environ is None else environ
+	platform = os.name if platform is None else platform
+	path = ntpath if platform == 'nt' else os.path
+	user_home = (
+		environ.get('HOME')
+		or environ.get('USERPROFILE')
+		or os.path.expanduser('~')
+	)
 
-DATADIR = os.path.join(
-	os.environ.get('APPDATA') or
-	os.environ.get('XDG_DATA_HOME') or
-	os.path.join(os.environ['HOME'], '.local', 'share'),
-	"iheartcli"
-)
+	if platform == 'nt':
+		data_root = environ.get('APPDATA') or environ.get('LOCALAPPDATA') or user_home
+		config_root = data_root
+	else:
+		data_root = environ.get('XDG_DATA_HOME') or path.join(user_home, '.local', 'share')
+		config_root = environ.get('XDG_CONFIG_HOME') or path.join(user_home, '.config')
 
-CONFIGDIR = os.path.join(
-	os.environ.get('XDG_CONFIG_HOME') or
-	os.path.join(os.environ['HOME'], '.config'),
-	"iheartcli"
-)
-if not os.path.isdir(CONFIGDIR):
-	os.makedirs(CONFIGDIR)
+	return (
+		path.join(data_root, 'iheartcli'),
+		path.join(config_root, 'iheartcli'),
+	)
+
+
+DATADIR, CONFIGDIR = _get_directories()
+
+os.makedirs(CONFIGDIR, exist_ok=True)
 
 
 

@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 import iheart.player as player_module
 from iheart.__main__ import iHeart, iHeart_CLI, main
+from iheart.conf import _get_directories
 
 
 class ConfigStub:
@@ -100,6 +101,30 @@ class CliActionsTests(unittest.TestCase):
 
     def tearDown(self):
         self.tempdir.cleanup()
+
+    def test_windows_directories_use_appdata_without_home(self):
+        data_dir, config_dir = _get_directories(
+            {
+                "APPDATA": r"C:\Users\Test\AppData\Roaming",
+                "USERPROFILE": r"C:\Users\Test",
+            },
+            platform="nt",
+        )
+
+        self.assertEqual(
+            data_dir,
+            r"C:\Users\Test\AppData\Roaming\iheartcli",
+        )
+        self.assertEqual(config_dir, data_dir)
+
+    def test_macos_directories_keep_xdg_defaults(self):
+        data_dir, config_dir = _get_directories(
+            {"HOME": "/Users/test"},
+            platform="darwin",
+        )
+
+        self.assertEqual(data_dir, "/Users/test/.local/share/iheartcli")
+        self.assertEqual(config_dir, "/Users/test/.config/iheartcli")
 
     def test_record_toggle_starts_and_stops_recording(self):
         station = StationStub()
