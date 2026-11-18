@@ -84,13 +84,22 @@ class iHeartArtistStation(TrackListStation):
 class iHeartSongStation(iHeartArtistStation):
 
 	def __init__(self, track_dict):
-		# artist = iget_artist_profile(track_dict['artistId'])
-		artist_dict = {
-			'id': track_dict['artistId'],
-			'name': track_dict['title'] + " - " + track_dict['artistName'],
-			'image': track_dict['image'],
-			'user_id': track_dict['user_id'],
-		}
+		# Search results contain track metadata; saved stations contain the
+		# already-normalized artist station data.
+		if 'artistId' in track_dict:
+			artist_dict = {
+				'id': track_dict['artistId'],
+				'name': track_dict.get('title', '') + " - " + track_dict.get('artistName', ''),
+				'image': track_dict.get('image'),
+				'user_id': track_dict.get('user_id'),
+			}
+		else:
+			artist_dict = {
+				'id': track_dict.get('id') or track_dict.get('__id__'),
+				'name': track_dict.get('name') or self.__class__.__name__,
+				'image': track_dict.get('image'),
+				'user_id': track_dict.get('user_id'),
+			}
 		super().__init__(artist_dict=artist_dict)
 
 

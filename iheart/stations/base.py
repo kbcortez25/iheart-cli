@@ -91,6 +91,19 @@ class Station(object):
 		if self.mrl is not None:
 			self.get_player().stop()
 
+	def start_recording(self, output_path):
+		if self.mrl is None:
+			raise RuntimeError("station has no stream to record")
+		return self.get_player().start_recording(output_path)
+
+	def stop_recording(self):
+		if self.mrl is None:
+			return None
+		return self.get_player().stop_recording()
+
+	def is_recording(self):
+		return self.mrl is not None and self.get_player().is_recording()
+
 	def is_playing(self):
 		return self.mrl is not None and self.get_player().is_playing()
 

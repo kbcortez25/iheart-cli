@@ -1,3 +1,4 @@
+import os
 import sys
 import time
 
@@ -52,6 +53,8 @@ class VLCPlayer(object):
 		self._play_start_time = None
 		self._paused_at = None
 		self._total_paused_time = 0
+		self._recorder = None
+		self._recording_path = None
 
 	@classmethod
 	def get_player(cls, mrl):
@@ -119,6 +122,44 @@ class VLCPlayer(object):
 		self._events_registry = {}
 		self.plr.play()
 
+	def start_recording(self, output_path):
+		"""Record the current stream to an MP3 file using a second VLC output."""
+		if self.plr is None or self.inst is None:
+			raise RuntimeError("cannot record before playback starts")
+		if self._recorder is not None:
+			raise RuntimeError("recording is already active")
+
+		output_path = os.path.abspath(os.fspath(output_path))
+		parent = os.path.dirname(output_path)
+		if parent:
+			os.makedirs(parent, exist_ok=True)
+		destination = output_path.replace('\\', '\\\\').replace('}', '\\}')
+		media = self.inst.media_new(self.mrl)
+		media.add_option(
+			":sout=#transcode{acodec=mp3,ab=192,channels=2,samplerate=44100}:"
+			"std{access=file,mux=mp3,dst=" + destination + "}"
+		)
+		media.add_option(":sout-keep")
+		self._recorder = self.inst.media_player_new()
+		self._recorder.set_media(media)
+		self._recorder.play()
+		self._recording_path = output_path
+		return output_path
+
+	def stop_recording(self):
+		if self._recorder is None:
+			return None
+		if self._recorder.get_state() not in (vlc.State.Ended, vlc.State.Stopped):
+			self._recorder.stop()
+		self._recorder.release()
+		self._recorder = None
+		path = self._recording_path
+		self._recording_path = None
+		return path
+
+	def is_recording(self):
+		return self._recorder is not None
+
 	def is_playing(self):
 		return self.plr is not None and self.plr.is_playing()
 
@@ -126,6 +167,7 @@ class VLCPlayer(object):
 		return self._paused
 
 	def stop(self):
+		self.stop_recording()
 		if self.plr is not None:
 			if not self.plr.get_state() in (vlc.State.Ended, vlc.State.Stopped):
 				self.plr.stop()

@@ -3,6 +3,8 @@ import traceback
 from collections import OrderedDict, namedtuple
 import json
 import argparse
+import re
+from datetime import datetime
 
 
 from .stations import (
@@ -98,6 +100,9 @@ class iHeart(object):
 		if category is None: category = self.ARTISTS
 		self._ensure_login()
 		search_res = iheart_client.isearch(keyword, startIndex=startIndex)
+		results = search_res.get('results') if isinstance(search_res, dict) else None
+		if not isinstance(results, dict) or category not in results:
+			raise ValueError("Search response did not contain '{}' results".format(category))
 
 		if category==self.STATIONS:
 			station_class = iHeartLiveStation
@@ -110,7 +115,7 @@ class iHeart(object):
 				raise NotImplementedError("'{}' not implemented yet".format(category))
 
 		out = []
-		for result in search_res['results'][category]:
+		for result in results[category]:
 			result['user_id'] = self.user_id
 			out.append(station_class(result))
 		return out
@@ -141,6 +146,7 @@ class iHeart_CLI(iHeart):
 		'p': 'pause-play',
 		'n': 'next',
 		'r': 'repeat-track-toggle',
+		't': 'record-segment-toggle',
 		'i': 'information',
 		'+': 'add-to-playlist',
 		'l': 'list-last-search',
@@ -172,6 +178,8 @@ class iHeart_CLI(iHeart):
 		)
 		self.station_list = []
 		self._station = None
+		self.recordings_dir = os.path.join(datadir, "recordings")
+		os.makedirs(self.recordings_dir, exist_ok=True)
 		self._debug = os.environ.get('RADIO_DEBUG') == "1"
 
 
@@ -321,6 +329,57 @@ class iHeart_CLI(iHeart):
 		return None
 
 
+	def choose_last_played(self):
+		last_played = self.store.get_last_played()
+		if not last_played:
+			return None
+
+		station_name = last_played.get('name') or last_played.get('__name__') or 'previous station'
+		choice = input("Listen to previously played station '{}' (Y/n): ".format(station_name)).strip().lower()
+		if choice not in ('', 'y', 'yes'):
+			return None
+
+		try:
+			return self.store.station_from_dict(last_played)
+		except Exception as e:
+			_print_error("Previously played station is unavailable")
+			if self._debug:
+				traceback.print_exc()
+		return None
+
+
+	def _recording_path(self):
+		name = getattr(self.station, 'name', None) or 'station'
+		name = re.sub(
+			r'[^A-Za-z0-9._-]+', '_', str(name)
+		).strip('._') or 'station'
+		stamp = datetime.now().strftime('%Y%m%d-%H%M%S')
+		return os.path.join(
+			self.recordings_dir, '{}-{}.mp3'.format(stamp, name)
+		)
+
+
+	def toggle_recording(self):
+		"""Start or stop a recording of the currently playing stream."""
+		if self.station is None:
+			return None
+		try:
+			if self.station.is_recording():
+				path = self.station.stop_recording()
+				print(app_msg_color("Recording saved: {}".format(path)))
+				return path
+
+			path = self._recording_path()
+			self.station.start_recording(path)
+			print(app_msg_color("Recording started: {}".format(path)))
+			return path
+		except Exception as e:
+			_print_error("Recording failed: {}".format(e))
+			if self._debug:
+				traceback.print_exc()
+			return None
+
+
 	def search_stations(self, category, keyword=None):
 		try:
 			if keyword is None:
@@ -351,7 +410,19 @@ class iHeart_CLI(iHeart):
 			while True:
 				cur_st_len = len(self.station_list)
 				if new_search:
-					to_print = getter(cur_st_len)
+					try:
+						to_print = getter(cur_st_len)
+					except Exception as e:
+						_print_error("Search failed: {}".format(e))
+						if self._debug:
+							traceback.print_exc()
+						return None
+					if not to_print:
+						if cur_st_len == 0:
+							_print_error("Nothing found")
+							return None
+						print(app_msg_color("No more results."))
+						return None
 					self.station_list += to_print
 				else:
 					if cur_st_len==0:
@@ -408,6 +479,10 @@ class iHeart_CLI(iHeart):
 			elif int(choice)==len(pl_names)-1:
 				new_pl = input("Name the new playlist: ").strip()
 				if new_pl:
+					separators = {os.path.sep, os.path.altsep, '/', '\\'} - {None}
+					if new_pl in ('.', '..') or any(separator in new_pl for separator in separators):
+						_print_error("Playlist name cannot contain path separators")
+						return None
 					self.store.add_to_playlist(playlist_name=new_pl, track=self.station)
 					print(app_msg_color("+ {}".format(new_pl)))
 				else:
@@ -507,15 +582,22 @@ class iHeart_CLI(iHeart):
 		new_station = None
 
 		input_category, search_term = search_tuple
+		prompt_last_played = input_category is None and search_term is None
 		try:
 			while True:
 				if new_station is not None:
+					if self.station is not None:
+						self.station.stop()
 					self.station = new_station
-					self.station.stop()
 					new_station = None
 					continue # This will restart the while loop to make sure everything is setup correctly
 
 				if self.station is None:
+					if prompt_last_played:
+						prompt_last_played = False
+						new_station = self.choose_last_played()
+						if new_station is not None:
+							continue
 					new_station = self.station_picker(category=input_category, keyword=search_term)
 					if new_station is None:
 						# no search results found. clearing input_category and search_term
@@ -601,6 +683,10 @@ class iHeart_CLI(iHeart):
 						self.station.show_time(False)
 						print(app_msg_color("Repeat on" if self.station.repeat else "Repeat off"))
 
+					elif cmd == 'record-segment-toggle':
+						self.station.show_time(False)
+						self.toggle_recording()
+
 					elif cmd == 'information':
 						printjson(self.station.info())
 
@@ -625,7 +711,8 @@ class iHeart_CLI(iHeart):
 							input_category, search_term = None, None
 							break
 		except:
-			self._debug: traceback.print_exc()
+			if self._debug:
+				traceback.print_exc()
 			raise
 		finally:
 			if self.station is not None:
@@ -652,6 +739,8 @@ def main():
 
 	parser.add_argument("--shuffle", help="start playlist in shuffle mode (only works when --playlist is specified)", action='store_true')
 	args = parser.parse_args()
+	if args.shuffle and args.playlist is None:
+		parser.error("--shuffle requires --playlist")
 
 	if args.debug:
 		os.environ['RADIO_DEBUG'] = "1"

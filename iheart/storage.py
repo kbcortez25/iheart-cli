@@ -151,6 +151,10 @@ class iRadio_Storage(object):
 	def get_live_presets(self):
 		return self._data['live_presets']
 
+
+	def get_last_played(self):
+		return self._data['last_played']
+
 	# -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 	# -=-=-=-=-=-=-=-= History ops -=-=-=-=-=-=-=-=-=-
 	# -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
